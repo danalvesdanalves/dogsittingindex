@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>$DOGS — Dog Sitting Exchange</title>
+<script>
+  // Set theme before first paint to avoid FOUC.
+  try {
+    var t = localStorage.getItem('dogs_theme_v1');
+    if (!t) t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (_) {}
+</script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐕</text></svg>" />
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #111418;
+    --muted: #7a828d;
+    --faint: #c4c9d0;
+    --up: #0a8f5b;
+    --up-soft: #d9f2e6;
+    --down: #c53207;
+    --down-soft: #fde3d9;
+    --grid: #eef0f3;
+    --hair: #dfe3e8;
+    --card: #f6f7f9;
+    --btn-fg: #ffffff;
+    --radius: 4px;
+    --radius-sm: 3px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d0f12;
+      --fg: #eef1f4;
+      --muted: #8b929c;
+      --faint: #3f444c;
+      --up: #10c07a;
+      --up-soft: #10c07a26;
+      --down: #ff5a1f;
+      --down-soft: #ff5a1f26;
+      --grid: #1a1d22;
+      --hair: #262a30;
+      --card: #14171b;
+      --btn-fg: #0d0f12;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #ffffff; --fg: #111418; --muted: #7a828d; --faint: #c4c9d0;
+    --up: #0a8f5b; --up-soft: #d9f2e6; --down: #c53207; --down-soft: #fde3d9;
+    --grid: #eef0f3; --hair: #dfe3e8; --card: #f6f7f9; --btn-fg: #ffffff;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d0f12; --fg: #eef1f4; --muted: #8b929c; --faint: #3f444c;
+    --up: #10c07a; --up-soft: #10c07a26; --down: #ff5a1f; --down-soft: #ff5a1f26;
+    --grid: #1a1d22; --hair: #262a30; --card: #14171b; --btn-fg: #0d0f12;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; background: var(--bg); color: var(--fg);
+    font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    /* Prevent double-tap-zoom so spamming BUY/SELL doesn't zoom the page. */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button, .btn, .qty, .range-tabs button, .theme-toggle {
+    touch-action: manipulation;
+  }
+
+  .wrap { max-width: 880px; margin: 0 auto; padding: 40px 24px 80px; position: relative; }
+
+  .name { font-size: 15px; font-weight: 600; margin: 0; }
+  .price { font-size: 15px; font-weight: 600; margin: 4px 0 6px; font-variant-numeric: tabular-nums; }
+  .delta {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 15px; font-weight: 600; color: var(--up);
+  }
+  .delta .pill {
+    background: var(--up-soft); color: var(--up);
+    padding: 2px 8px; border-radius: var(--radius-sm);
+    font-variant-numeric: tabular-nums;
+  }
+  .delta.down { color: var(--down); }
+  .delta.down .pill { background: var(--down-soft); color: var(--down); }
+  .delta .today { color: var(--muted); font-weight: 400; }
+  .ticker-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .ticker { font-size: 15px; color: var(--muted); font-weight: 500; }
+
+  .theme-toggle {
+    position: absolute; top: 40px; right: 24px;
+    font-family: inherit; font-size: 15px; line-height: 1;
+    background: var(--bg); color: var(--muted);
+    border: 1px solid var(--hair); border-radius: var(--radius-sm);
+    padding: 6px 10px; cursor: pointer;
+    z-index: 20;
+  }
+  .theme-toggle:hover { color: var(--fg); border-color: var(--faint); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  /* Top mini-stats: MARKET CAP · OPEN · 24H VOL */
+  .top-stats {
+    margin-top: 20px;
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    border: 1px solid var(--hair); border-radius: var(--radius);
+    background: var(--bg); overflow: hidden;
+  }
+  .top-stats .cell {
+    padding: 10px 14px; border-right: 1px solid var(--hair);
+  }
+  .top-stats .cell:last-child { border-right: 0; }
+  .top-stats .k { font-size: 15px; color: var(--muted); }
+  .top-stats .v { font-size: 15px; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+  .label-row {
+    margin-top: 28px; display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap;
+  }
+  .label { font-size: 15px; font-weight: 600; }
+  .range-tabs { display: flex; gap: 2px; }
+  .range-tabs button {
+    font-family: inherit; font-size: 15px; font-weight: 500;
+    background: transparent; color: var(--muted); border: 0; padding: 4px 10px;
+    cursor: pointer; border-radius: var(--radius-sm);
+  }
+  .range-tabs button.active { background: var(--card); color: var(--fg); }
+  .range-tabs button:hover { color: var(--fg); }
+
+  .chart-container {
+    position: relative; margin-top: 12px;
+    border: 1px solid var(--hair); border-radius: var(--radius);
+    background: var(--bg);
+    padding: 14px 14px 8px 14px;
+  }
+  .chart { width: 100%; height: 340px; display: block; }
+  .vol-chart { width: 100%; height: 60px; display: block; margin-top: 4px; }
+  .chart text { fill: var(--muted); font-family: inherit; font-size: 11px; }
+  .grid-line { stroke: var(--grid); stroke-width: 1; }
+  .hair-line { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0; pointer-events: none; }
+
+  .tooltip {
+    position: absolute; pointer-events: none; opacity: 0;
+    background: var(--card); border: 1px solid var(--hair); border-radius: var(--radius);
+    padding: 8px 10px; font-size: 15px; line-height: 1.35;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08); white-space: nowrap;
+    transform: translate(-50%, -110%);
+    font-variant-numeric: tabular-nums;
+  }
+  .tooltip .tt-time { color: var(--muted); font-size: 15px; }
+  .tooltip .tt-row { display: flex; gap: 12px; justify-content: space-between; }
+  .tooltip .tt-k { color: var(--muted); }
+
+  .actions {
+    margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .btn {
+    font-family: inherit; font-size: 15px; font-weight: 700;
+    border: 0; border-radius: var(--radius); padding: 14px 16px; cursor: pointer;
+    letter-spacing: 0.02em; color: var(--btn-fg);
+    transition: transform 60ms ease, filter 120ms ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn:hover { filter: brightness(1.05); }
+  .btn.buy { background: var(--up); }
+  .btn.sell { background: var(--down); }
+  .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  .order-row {
+    margin-top: 10px; display: flex; align-items: center; gap: 10px;
+    font-size: 15px; color: var(--muted); flex-wrap: wrap;
+  }
+  .qty {
+    font-family: inherit; font-size: 15px;
+    background: var(--card); color: var(--fg); border: 1px solid var(--hair);
+    border-radius: var(--radius-sm); padding: 8px 10px; width: 90px;
+    font-variant-numeric: tabular-nums;
+  }
+  .qty:focus { outline: 2px solid var(--fg); outline-offset: 1px; }
+
+  .stats {
+    margin-top: 32px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px;
+    background: var(--hair); border: 1px solid var(--hair); border-radius: var(--radius); overflow: hidden;
+  }
+  .stat { background: var(--bg); padding: 16px 18px; }
+  .stat .k { font-size: 15px; color: var(--muted); }
+  .stat .v { font-size: 15px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+
+  .footer { margin-top: 40px; font-size: 15px; color: var(--muted); line-height: 1.55; }
+
+  /* Portfolio */
+  .portfolio {
+    margin-top: 32px;
+    border: 1px solid var(--hair); border-radius: var(--radius);
+    background: var(--bg); overflow: hidden;
+  }
+  .port-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px; border-bottom: 1px solid var(--hair);
+  }
+  .port-head .title { font-size: 15px; font-weight: 600; }
+  .port-head .reset {
+    font-family: inherit; font-size: 15px; color: var(--muted);
+    background: transparent; border: 0; cursor: pointer; padding: 4px 6px; border-radius: var(--radius-sm);
+  }
+  .port-head .reset:hover { color: var(--fg); }
+  .port-summary {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px;
+    background: var(--hair);
+  }
+  .port-cell { background: var(--bg); padding: 14px 18px; }
+  .port-cell .k { font-size: 15px; color: var(--muted); }
+  .port-cell .v { font-size: 15px; font-weight: 600; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .port-cell .v.up { color: var(--up); }
+  .port-cell .v.down { color: var(--down); }
+
+  .port-empty {
+    padding: 22px 18px; color: var(--muted); text-align: center; font-size: 15px;
+  }
+
+  .txns { border-top: 1px solid var(--hair); }
+  .txns-head {
+    display: grid; grid-template-columns: 70px 1fr 1fr 1fr 1fr;
+    padding: 10px 18px; color: var(--muted); font-size: 15px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .txn {
+    display: grid; grid-template-columns: 70px 1fr 1fr 1fr 1fr;
+    padding: 10px 18px; font-size: 15px; font-variant-numeric: tabular-nums;
+    border-bottom: 1px solid var(--hair);
+  }
+  .txn:last-child { border-bottom: 0; }
+  .txn .side.buy { color: var(--up); font-weight: 700; }
+  .txn .side.sell { color: var(--down); font-weight: 700; }
+  .txns-scroll { max-height: 240px; overflow-y: auto; }
+
+  @media (max-width: 620px) {
+    .port-summary { grid-template-columns: repeat(2, 1fr); }
+    .txns-head, .txn { grid-template-columns: 56px 1fr 1fr; }
+    .txns-head .h-value, .txn .c-value,
+    .txns-head .h-pl, .txn .c-pl { display: none; }
+  }
+
+  @media (max-width: 620px) {
+    .wrap { padding: 24px 16px 200px; }
+    .theme-toggle { top: 24px; right: 16px; }
+    .chart { height: 200px; }
+    .chart-container { padding: 10px 10px 6px 10px; }
+    .top-stats .cell { padding: 10px 10px; }
+    .top-stats .k { font-size: 13px; }
+    .top-stats .v { font-size: 14px; }
+
+    /* Sticky trade bar */
+    .trade-bar {
+      position: fixed; left: 0; right: 0; bottom: 0;
+      background: var(--bg); border-top: 1px solid var(--hair);
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+      z-index: 30;
+      display: flex; flex-direction: column; gap: 10px;
+      box-shadow: 0 -8px 24px rgba(0,0,0,0.06);
+    }
+    .trade-bar .actions { margin-top: 0; }
+    .trade-bar .order-row { margin-top: 0; }
+    .trade-bar .btn { padding: 12px 14px; }
+  }
+
+  @media (max-width: 520px) {
+    .stats { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="ticker-row">
+    <h1 class="name">Dog Sitting Exchange</h1>
+    <span class="ticker">NASDAQ: $DOGS</span>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle color theme">☾</button>
+  </div>
+  <div class="price" id="price">$0.00</div>
+  <div class="delta" id="delta">
+    <span class="pill" id="deltaPill">+$0.00 (+0.00%)</span>
+    <span class="today">Today</span>
+  </div>
+
+  <div class="top-stats">
+    <div class="cell"><div class="k">MARKET CAP</div><div class="v" id="topMcap">$280.00M</div></div>
+    <div class="cell"><div class="k">OPEN</div><div class="v" id="topOpen">$238.20</div></div>
+    <div class="cell"><div class="k">24H VOLUME</div><div class="v" id="topVol">$42.7M</div></div>
+  </div>
+
+  <div class="label-row">
+    <div class="label">24 Hour Market</div>
+    <div class="range-tabs" role="tablist" aria-label="Time range">
+      <button data-range="1D" class="active">1D</button>
+      <button data-range="1W">1W</button>
+      <button data-range="1M">1M</button>
+      <button data-range="1Y">1Y</button>
+      <button data-range="ALL">ALL</button>
+    </div>
+  </div>
+
+  <div class="chart-container">
+    <svg class="chart" id="chart" viewBox="0 0 800 340" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="areaGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="var(--up)" stop-opacity="0.25" />
+          <stop offset="100%" stop-color="var(--up)" stop-opacity="0" />
+        </linearGradient>
+      </defs>
+      <path id="area" d="" fill="url(#areaGrad)" />
+      <path id="past" d="" fill="none" stroke="var(--up)" stroke-opacity="0.5" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      <path id="live" d="" fill="none" stroke="var(--up)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+      <line id="hairV" class="hair-line" x1="0" x2="0" y1="0" y2="340" />
+      <line id="hairH" class="hair-line" x1="0" x2="800" y1="0" y2="0" />
+      <circle id="dot" r="4" fill="var(--up)" />
+      <circle id="hoverDot" r="3.5" fill="var(--up)" opacity="0" />
+      <rect id="hitArea" x="0" y="0" width="800" height="340" fill="transparent" />
+    </svg>
+    <div class="tooltip" id="tooltip" role="tooltip"></div>
+  </div>
+
+  <div class="trade-bar" id="tradeBar">
+    <div class="actions">
+      <button class="btn buy" id="buyBtn" aria-label="Buy DOGS">BUY $DOGS</button>
+      <button class="btn sell" id="sellBtn" aria-label="Sell DOGS">SELL $DOGS</button>
+    </div>
+    <div class="order-row">
+      <label for="qty">SHARES</label>
+      <input class="qty" id="qty" type="number" min="1" max="99999" value="10" />
+      <span id="estCost">≈ $2,506.00</span>
+      <span>· <span id="ownedInline">0</span> owned</span>
+    </div>
+  </div>
+
+  <div class="portfolio" id="portfolio">
+    <div class="port-head">
+      <div class="title">My Shares</div>
+      <button class="reset" id="resetBtn" title="Reset portfolio">CLEAR</button>
+    </div>
+    <div class="port-summary">
+      <div class="port-cell"><div class="k">SHARES OWNED</div><div class="v" id="pShares">0</div></div>
+      <div class="port-cell"><div class="k">AVG COST</div><div class="v" id="pAvg">—</div></div>
+      <div class="port-cell"><div class="k">MARKET VALUE</div><div class="v" id="pValue">$0.00</div></div>
+      <div class="port-cell"><div class="k">TOTAL P/L</div><div class="v" id="pPL">—</div></div>
+    </div>
+    <div class="txns" id="txnsWrap">
+      <div class="txns-head">
+        <div>SIDE</div><div>QTY</div><div>PRICE</div><div class="h-value">VALUE</div><div class="h-pl">TIME</div>
+      </div>
+      <div class="txns-scroll" id="txns"></div>
+    </div>
+  </div>
+
+  <div class="stats" id="stats">
+    <div class="stat"><div class="k">MARKET CAP</div><div class="v" id="mcap">$280.00M</div></div>
+    <div class="stat"><div class="k">24H VOLUME</div><div class="v" id="vol">$42.7M</div></div>
+    <div class="stat"><div class="k">24H HIGH</div><div class="v" id="hi">$0.00</div></div>
+    <div class="stat"><div class="k">24H LOW</div><div class="v" id="lo">$0.00</div></div>
+    <div class="stat"><div class="k">SIGNED SITTERS (YTD)</div><div class="v" id="sitters">1,247</div></div>
+    <div class="stat"><div class="k">AVG. SIGNING BONUS</div><div class="v" id="bonus">$10.4M</div></div>
+    <div class="stat"><div class="k">LARGEST CONTRACT</div><div class="v" id="contract">$22.8M / 4YR</div></div>
+    <div class="stat"><div class="k">BELLY RUBS / SEC</div><div class="v" id="rubs">3,481</div></div>
+    <div class="stat"><div class="k">P/E RATIO</div><div class="v" id="pe">∞</div></div>
+    <div class="stat"><div class="k">ANALYST RATING</div><div class="v">STRONG BUY 🐕</div></div>
+    <div class="stat"><div class="k">CEO</div><div class="v">MR. PEANUT BUTTER</div></div>
+    <div class="stat"><div class="k">HQ</div><div class="v">THE DOG PARK</div></div>
+  </div>
+
+  <div class="footer">
+    Not financial advice. Not a real security. Shares are imaginary and settle in belly rubs.
+    Dog Sitting Exchange (DSX) is a satirical exchange tracking the notional value of the global
+    professional dogsitting complex. All figures fabricated for entertainment.
+    Consult your dog before investing.
+  </div>
+</div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const PRICE_EL = $('price'), DELTA_EL = $('delta');
+  const PAST = $('past'), LIVE = $('live'), AREA = $('area');
+  const DOT = $('dot'), HOVER_DOT = $('hoverDot');
+  const HAIR_V = $('hairV'), HAIR_H = $('hairH'), HIT = $('hitArea');
+  const TOOLTIP = $('tooltip');
+  const QTY = $('qty'), EST_COST = $('estCost');
+
+  const W = 800, H = 340, PAD_T = 10, PAD_B = 10, PAD_L = 0, PAD_R = 0;
+  const CHART_W = W - PAD_L - PAD_R;
+  const YMIN_PAD = 0.12;
+
+  // -------- SWING HOOK (edit this line to trigger a queued swing on load) --------
+  // Format: { pct: 0.50, over: 20 }  ->  +50% over 20 ticks.  null = no swing.
+  const BOOT_SWING = null;
+  // -------------------------------------------------------------------------------
+
+  const OPEN = 238.20;
+  const startMcap = 280_000_000;
+  let mcapMultiplier = 1;
+
+  const PAST_POINTS = 260;
+  const MAX_POINTS = 800;
+  const HISTORY_KEY = 'dogs_history_v1';
+
+  // Try to restore chart history from localStorage so redeploys don't reset it.
+  let points = loadHistory();
+  let price = points.length ? points[points.length - 1].p : (250.60 + (Math.random() * 4 - 2));
+
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr) && arr.length) return arr;
+      }
+    } catch (_) {}
+    return [];
+  }
+  function saveHistory() {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(points.slice(-MAX_POINTS))); } catch (_) {}
+  }
+
+  const TOTAL_MINUTES = 24 * 60; // 24H
+  // Seed history only if we didn't restore any from localStorage.
+  if (points.length === 0) {
+    (function seedHistory() {
+      let p = OPEN;
+      const drift = (price - OPEN) / PAST_POINTS;
+      for (let i = 0; i < PAST_POINTS; i++) {
+        const progress = i / PAST_POINTS;
+        const vol = 0.18 + progress * 1.4;
+        const noise = (Math.random() - 0.48) * vol;
+        p = p + drift + noise;
+        const t = (i / (MAX_POINTS - 1)) * TOTAL_MINUTES;
+        const v = 40_000 + Math.random() * 220_000 + progress * 180_000;
+        points.push({ p, v, t, live: false });
+      }
+      points[points.length - 1].p = price;
+    })();
+  }
+
+  // Swing state — a queued price move that plays out over N ticks.
+  let swingRemaining = 0;        // ticks left in current swing
+  let swingPerTick = 0;          // absolute $ change to apply per tick during swing
+  function queueSwing(pct, overTicks) {
+    const over = Math.max(1, Math.floor(overTicks || 20));
+    const target = price * (1 + pct);
+    swingPerTick = (target - price) / over;
+    swingRemaining = over;
+  }
+  window.dogsSwing = queueSwing; // callable from devtools too
+
+  function fmtMoney(n) {
+    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtSignedMoney(n) {
+    return (n >= 0 ? '+' : '-') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function fmtMcap(n) {
+    if (n >= 1e9) return '$' + (n / 1e9).toFixed(2) + 'B';
+    return '$' + (n / 1e6).toFixed(2) + 'M';
+  }
+  function fmtInt(n) { return Math.round(n).toLocaleString('en-US'); }
+  function fmtVolShort(n) {
+    if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+    return String(Math.round(n));
+  }
+  function fmtClock(mins) {
+    // 24h market label. mins in [0, TOTAL_MINUTES]
+    const total = Math.round(mins) % (24 * 60);
+    const h24 = Math.floor(total / 60);
+    const m = total % 60;
+    const h12 = ((h24 + 11) % 12) + 1;
+    const ap = h24 < 12 ? 'AM' : 'PM';
+    return h12 + ':' + String(m).padStart(2, '0') + ap;
+  }
+
+  let cachedY = null;
+  function computeScale() {
+    const all = points.map(p => p.p);
+    const min = Math.min(...all, OPEN);
+    const max = Math.max(...all, OPEN);
+    const range = Math.max(max - min, 1);
+    const yPad = range * YMIN_PAD;
+    return { yMin: min - yPad, yMax: max + yPad, dMin: min, dMax: max };
+  }
+
+  function xFor(i) {
+    const xStep = CHART_W / (MAX_POINTS - 1);
+    return PAD_L + i * xStep;
+  }
+  function yFor(v, s) {
+    return PAD_T + (H - PAD_T - PAD_B) * (1 - (v - s.yMin) / (s.yMax - s.yMin));
+  }
+
+  function render() {
+    const s = computeScale();
+    cachedY = s;
+
+    const firstLive = points.findIndex(p => p.live);
+    const splitIdx = firstLive === -1 ? points.length : firstLive;
+
+    let hiI = 0, loI = 0;
+    for (let i = 0; i < points.length; i++) {
+      if (points[i].p > points[hiI].p) hiI = i;
+      if (points[i].p < points[loI].p) loI = i;
+    }
+
+    const buildPath = (start, end) => {
+      if (start >= end) return '';
+      let d = '';
+      for (let i = start; i < end; i++) {
+        const x = xFor(i);
+        const y = yFor(points[i].p, s);
+        d += (i === start ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+      }
+      return d;
+    };
+
+    const dPast = buildPath(0, Math.min(splitIdx + 1, points.length));
+    const dLive = buildPath(Math.max(0, splitIdx), points.length);
+
+    const yBottom = H - PAD_B;
+    let dFull = '';
+    for (let i = 0; i < points.length; i++) {
+      const x = xFor(i);
+      const y = yFor(points[i].p, s);
+      dFull += (i === 0 ? 'M' : 'L') + x.toFixed(1) + ' ' + y.toFixed(1);
+    }
+    const dArea = dFull + ' L' + xFor(points.length - 1).toFixed(1) + ' ' + yBottom.toFixed(1)
+                        + ' L' + xFor(0).toFixed(1) + ' ' + yBottom.toFixed(1) + ' Z';
+
+    PAST.setAttribute('d', dPast);
+    LIVE.setAttribute('d', dLive);
+    AREA.setAttribute('d', dArea);
+
+    const last = points[points.length - 1];
+    DOT.setAttribute('cx', xFor(points.length - 1));
+    DOT.setAttribute('cy', yFor(last.p, s));
+
+    const up = price >= OPEN;
+    const cs = getComputedStyle(document.documentElement);
+    const upColor = cs.getPropertyValue('--up').trim();
+    const downColor = cs.getPropertyValue('--down').trim();
+    const color = up ? upColor : downColor;
+    PAST.setAttribute('stroke', color);
+    LIVE.setAttribute('stroke', color);
+    DOT.setAttribute('fill', color);
+    HOVER_DOT.setAttribute('fill', color);
+
+    const grad = document.getElementById('areaGrad');
+    if (grad) {
+      grad.children[0].setAttribute('stop-color', color);
+      grad.children[1].setAttribute('stop-color', color);
+    }
+
+    // Feed the 24H HIGH / 24H LOW stat cards at the bottom.
+    $('hi').textContent = fmtMoney(points[hiI].p);
+    $('lo').textContent = fmtMoney(points[loI].p);
+  }
+
+  function updateHeader() {
+    PRICE_EL.textContent = fmtMoney(price);
+    const diff = price - OPEN;
+    const pct = (diff / OPEN) * 100;
+    const up = diff >= 0;
+    DELTA_EL.className = 'delta' + (up ? '' : ' down');
+    const pill = $('deltaPill');
+    if (pill) pill.textContent = fmtSignedMoney(diff) + ' (' + (up ? '+' : '') + pct.toFixed(2) + '%)';
+    updateEstCost();
+  }
+
+  function updateEstCost() {
+    const q = Math.max(0, parseInt(QTY.value || '0', 10));
+    EST_COST.textContent = '≈ ' + fmtMoney(q * price);
+  }
+
+  function updateStats() {
+    mcapMultiplier *= 1 + (Math.random() * 0.00035 + 0.00008);
+    const mcapNow = startMcap * mcapMultiplier * (price / 250.60);
+    const mcapStr = fmtMcap(mcapNow);
+    $('mcap').textContent = mcapStr;
+    $('topMcap').textContent = mcapStr;
+
+    const vol = 30_000_000 + Math.random() * 30_000_000 + (mcapMultiplier - 1) * 5e8;
+    const volStr = '$' + (vol / 1e6).toFixed(1) + 'M';
+    $('vol').textContent = volStr;
+    $('topVol').textContent = volStr;
+
+    $('sitters').textContent = fmtInt(1247 + Math.floor((mcapMultiplier - 1) * 40000) + Math.floor(Math.random() * 3));
+
+    const bonus = 10.4 + (Math.random() - 0.4) * 0.6 + (mcapMultiplier - 1) * 8;
+    $('bonus').textContent = '$' + bonus.toFixed(2) + 'M';
+
+    $('rubs').textContent = fmtInt(3481 + Math.floor(Math.random() * 400 - 100) + (mcapMultiplier - 1) * 5000);
+
+    const peRoll = Math.random();
+    if (peRoll < 0.6) $('pe').textContent = '∞';
+    else if (peRoll < 0.85) $('pe').textContent = (800 + Math.random() * 4200).toFixed(0);
+    else $('pe').textContent = 'N/A 🦴';
+  }
+
+  let saveTickCounter = 0;
+  function tick() {
+    let step;
+    let volMult = 1;
+    if (swingRemaining > 0) {
+      // Big-move mode: dominant swing + small noise for realism.
+      const jitter = (Math.random() - 0.5) * Math.abs(swingPerTick) * 0.35;
+      step = swingPerTick + jitter;
+      swingRemaining--;
+      volMult = 3.5;
+    } else {
+      const bias = 0.02;
+      step = (Math.random() - 0.5 + bias * 0.05) * 1.2;
+    }
+    price = Math.max(0.01, price + step);
+    const lastT = points.length ? points[points.length - 1].t : 0;
+    const t = lastT + (TOTAL_MINUTES / (MAX_POINTS - 1));
+    const v = (40_000 + Math.random() * 260_000) * volMult;
+    points.push({ p: price, v, t, live: true });
+    if (points.length > MAX_POINTS) points.shift();
+    updateHeader();
+    render();
+    renderPortfolio();
+    // Persist history periodically (every ~4.5s)
+    if (++saveTickCounter % 5 === 0) saveHistory();
+  }
+  window.addEventListener('beforeunload', saveHistory);
+
+  // Hover crosshair + tooltip
+  const container = document.querySelector('.chart-container');
+  const chartSvg = $('chart');
+
+  function showHoverAt(clientX) {
+    if (!cachedY) return;
+    const rect = chartSvg.getBoundingClientRect();
+    const relX = (clientX - rect.left) / rect.width * W;
+    // Snap to nearest point
+    let bestI = 0, bestD = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const d = Math.abs(xFor(i) - relX);
+      if (d < bestD) { bestD = d; bestI = i; }
+    }
+    const p = points[bestI];
+    const px = xFor(bestI), py = yFor(p.p, cachedY);
+    HAIR_V.setAttribute('x1', px); HAIR_V.setAttribute('x2', px);
+    HAIR_H.setAttribute('y1', py); HAIR_H.setAttribute('y2', py);
+    HAIR_V.style.opacity = '1'; HAIR_H.style.opacity = '1';
+    HOVER_DOT.setAttribute('cx', px); HOVER_DOT.setAttribute('cy', py);
+    HOVER_DOT.setAttribute('opacity', '1');
+
+    // Tooltip positioning in container-space
+    const cRect = container.getBoundingClientRect();
+    const svgRect = chartSvg.getBoundingClientRect();
+    const cssX = svgRect.left - cRect.left + (px / W) * svgRect.width;
+    const cssY = svgRect.top - cRect.top + (py / H) * svgRect.height;
+    TOOLTIP.style.left = cssX + 'px';
+    TOOLTIP.style.top = cssY + 'px';
+    TOOLTIP.style.opacity = '1';
+    TOOLTIP.innerHTML =
+      '<div class="tt-time">' + fmtClock(p.t) + '</div>' +
+      '<div class="tt-row"><span class="tt-k">PRICE</span><span>' + fmtMoney(p.p) + '</span></div>' +
+      '<div class="tt-row"><span class="tt-k">VOL</span><span>' + fmtVolShort(p.v) + '</span></div>';
+  }
+  function hideHover() {
+    HAIR_V.style.opacity = '0'; HAIR_H.style.opacity = '0';
+    HOVER_DOT.setAttribute('opacity', '0');
+    TOOLTIP.style.opacity = '0';
+  }
+
+  chartSvg.addEventListener('mousemove', e => showHoverAt(e.clientX));
+  chartSvg.addEventListener('mouseleave', hideHover);
+  chartSvg.addEventListener('touchmove', e => { if (e.touches[0]) showHoverAt(e.touches[0].clientX); }, { passive: true });
+  chartSvg.addEventListener('touchend', hideHover);
+
+  // Range tabs — cosmetic, all show the same "24H" data with a small joke pill
+  document.querySelectorAll('.range-tabs button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.range-tabs button').forEach(x => x.classList.remove('active'));
+      b.classList.add('active');
+      document.querySelector('.label').textContent = ({
+        '1D': '24 Hour Market',
+        '1W': '1 Week',
+        '1M': '1 Month',
+        '1Y': '1 Year (Since IPO Bark)',
+        'ALL': 'All Time (Since The Dawn Of Dog)'
+      })[b.dataset.range];
+    });
+  });
+
+  // Portfolio — persisted to localStorage
+  const STORAGE_KEY = 'dogs_portfolio_v1';
+  const portfolio = loadPortfolio();
+
+  function loadPortfolio() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (_) {}
+    return { shares: 0, costBasis: 0, txns: [] };
+  }
+  function savePortfolio() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(portfolio)); } catch (_) {}
+  }
+
+  function fmtTime(ts) {
+    const d = new Date(ts);
+    const h24 = d.getHours(), m = d.getMinutes();
+    const h12 = ((h24 + 11) % 12) + 1;
+    const ap = h24 < 12 ? 'AM' : 'PM';
+    return h12 + ':' + String(m).padStart(2, '0') + ap;
+  }
+
+  function buy(q, atPrice) {
+    if (q <= 0) return;
+    portfolio.shares += q;
+    portfolio.costBasis += q * atPrice;
+    portfolio.txns.unshift({ side: 'buy', qty: q, price: atPrice, ts: Date.now() });
+    if (portfolio.txns.length > 100) portfolio.txns.pop();
+    savePortfolio();
+    renderPortfolio();
+  }
+  function sell(q, atPrice) {
+    if (q <= 0 || portfolio.shares <= 0) return;
+    const actual = Math.min(q, portfolio.shares);
+    // Reduce cost basis proportionally (average-cost accounting)
+    const avg = portfolio.shares > 0 ? portfolio.costBasis / portfolio.shares : 0;
+    portfolio.costBasis -= actual * avg;
+    portfolio.shares -= actual;
+    if (portfolio.shares === 0) portfolio.costBasis = 0;
+    portfolio.txns.unshift({ side: 'sell', qty: actual, price: atPrice, ts: Date.now() });
+    if (portfolio.txns.length > 100) portfolio.txns.pop();
+    savePortfolio();
+    renderPortfolio();
+  }
+
+  function renderPortfolio() {
+    const shares = portfolio.shares;
+    const avg = shares > 0 ? portfolio.costBasis / shares : 0;
+    const value = shares * price;
+    const pl = value - portfolio.costBasis;
+    const plPct = portfolio.costBasis > 0 ? (pl / portfolio.costBasis) * 100 : 0;
+
+    $('pShares').textContent = fmtInt(shares);
+    $('pAvg').textContent = shares > 0 ? fmtMoney(avg) : '—';
+    $('pValue').textContent = fmtMoney(value);
+
+    const plEl = $('pPL');
+    if (shares === 0) {
+      plEl.textContent = '—';
+      plEl.className = 'v';
+    } else {
+      const up = pl >= 0;
+      plEl.textContent = fmtSignedMoney(pl) + ' (' + (up ? '+' : '') + plPct.toFixed(2) + '%)';
+      plEl.className = 'v ' + (up ? 'up' : 'down');
+    }
+
+    $('ownedInline').textContent = fmtInt(shares);
+
+    // Transactions
+    const txnsEl = $('txns');
+    if (portfolio.txns.length === 0) {
+      txnsEl.innerHTML = '<div class="port-empty">No transactions yet. Buy some $DOGS.</div>';
+    } else {
+      txnsEl.innerHTML = portfolio.txns.map(t => {
+        const val = t.qty * t.price;
+        return '<div class="txn">' +
+          '<div class="side ' + t.side + '">' + t.side.toUpperCase() + '</div>' +
+          '<div>' + fmtInt(t.qty) + '</div>' +
+          '<div>' + fmtMoney(t.price) + '</div>' +
+          '<div class="c-value">' + fmtMoney(val) + '</div>' +
+          '<div class="c-pl">' + fmtTime(t.ts) + '</div>' +
+        '</div>';
+      }).join('');
+    }
+  }
+
+  $('buyBtn').addEventListener('click', () => {
+    const q = Math.max(1, parseInt(QTY.value || '1', 10));
+    buy(q, price);
+  });
+  $('sellBtn').addEventListener('click', () => {
+    const q = Math.max(1, parseInt(QTY.value || '1', 10));
+    sell(q, price);
+  });
+  $('resetBtn').addEventListener('click', () => {
+    if (portfolio.shares === 0 && portfolio.txns.length === 0) return;
+    if (confirm('Clear your $DOGS portfolio? This cannot be undone (but none of it was real anyway).')) {
+      portfolio.shares = 0; portfolio.costBasis = 0; portfolio.txns = [];
+      savePortfolio(); renderPortfolio();
+    }
+  });
+  QTY.addEventListener('input', updateEstCost);
+
+  // Theme toggle — persist choice
+  const THEME_KEY = 'dogs_theme_v1';
+  const themeBtn = $('themeToggle');
+  function setThemeIcon() {
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    themeBtn.textContent = cur === 'dark' ? '☀' : '☾';
+    themeBtn.setAttribute('title', cur === 'dark' ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  themeBtn.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme') || 'light';
+    const next = cur === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (_) {}
+    setThemeIcon();
+    // Re-render chart so line/area/dot colors resync from CSS vars.
+    render();
+  });
+  setThemeIcon();
+
+  // Initial paint
+  updateHeader();
+  updateStats();
+  render();
+  renderPortfolio();
+
+  // Boot-swing: if this build was deployed with a queued swing, run it now.
+  if (BOOT_SWING && typeof BOOT_SWING.pct === 'number') {
+    queueSwing(BOOT_SWING.pct, BOOT_SWING.over || 20);
+  }
+
+  setInterval(tick, 900);
+  setInterval(updateStats, 1500);
+})();
+</script>
+</body>
+</html>
