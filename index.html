@@ -391,8 +391,10 @@
   const YMIN_PAD = 0.12;
 
   // -------- SWING HOOK (edit this line to trigger a queued swing on load) --------
-  // Format: { pct: 0.50, over: 20 }  ->  +50% over 20 ticks.  null = no swing.
-  const BOOT_SWING = { pct: 0.23, over: 25 };
+  // { pct: 0.50, over: 20 }   ->  +50% over 20 ticks
+  // { to: 125,   over: 4000 } ->  slide to $125 over 4000 ticks (~1h at 900ms/tick)
+  // null                       ->  no swing
+  const BOOT_SWING = { to: 125, over: 4000 };
   // -------------------------------------------------------------------------------
 
   const OPEN = 238.20;
@@ -449,7 +451,13 @@
     swingPerTick = (target - price) / over;
     swingRemaining = over;
   }
-  window.dogsSwing = queueSwing; // callable from devtools too
+  function queueSwingTo(targetPrice, overTicks) {
+    const over = Math.max(1, Math.floor(overTicks || 20));
+    swingPerTick = (targetPrice - price) / over;
+    swingRemaining = over;
+  }
+  window.dogsSwing = queueSwing;
+  window.dogsSwingTo = queueSwingTo;
 
   function fmtMoney(n) {
     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -607,9 +615,10 @@
     let step;
     let volMult = 1;
     if (swingRemaining > 0) {
-      // Big-move mode: dominant swing + small noise for realism.
-      const jitter = (Math.random() - 0.5) * Math.abs(swingPerTick) * 0.35;
-      step = swingPerTick + jitter;
+      // Big-move mode: dominant swing + ambient noise so slow slides still look alive.
+      const bigJitter = (Math.random() - 0.5) * Math.abs(swingPerTick) * 0.35;
+      const ambient = (Math.random() - 0.5) * 0.8;
+      step = swingPerTick + bigJitter + ambient;
       swingRemaining--;
       volMult = 3.5;
     } else {
@@ -821,8 +830,12 @@
   renderPortfolio();
 
   // Boot-swing: if this build was deployed with a queued swing, run it now.
-  if (BOOT_SWING && typeof BOOT_SWING.pct === 'number') {
-    queueSwing(BOOT_SWING.pct, BOOT_SWING.over || 20);
+  if (BOOT_SWING) {
+    if (typeof BOOT_SWING.to === 'number') {
+      queueSwingTo(BOOT_SWING.to, BOOT_SWING.over || 20);
+    } else if (typeof BOOT_SWING.pct === 'number') {
+      queueSwing(BOOT_SWING.pct, BOOT_SWING.over || 20);
+    }
   }
 
   setInterval(tick, 900);
