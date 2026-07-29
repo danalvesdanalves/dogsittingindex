@@ -488,8 +488,8 @@
   }
 
   function xFor(i) {
-    const xStep = CHART_W / (MAX_POINTS - 1);
-    return PAD_L + i * xStep;
+    const denom = Math.max(1, points.length - 1);
+    return PAD_L + (i / denom) * CHART_W;
   }
   function yFor(v, s) {
     return PAD_T + (H - PAD_T - PAD_B) * (1 - (v - s.yMin) / (s.yMax - s.yMin));
