@@ -390,74 +390,87 @@
   const CHART_W = W - PAD_L - PAD_R;
   const YMIN_PAD = 0.12;
 
-  // -------- SWING HOOK (edit this line to trigger a queued swing on load) --------
-  // { pct: 0.50, over: 20 }   ->  +50% over 20 ticks
-  // { to: 125,   over: 4000 } ->  slide to $125 over 4000 ticks (~1h at 900ms/tick)
-  // null                       ->  no swing
-  const BOOT_SWING = { to: 125, over: 4000 };
-  // -------------------------------------------------------------------------------
-
+  // -------- GLOBAL DETERMINISTIC PRICE --------
+  // Every viewer computes the same price by seeding a PRNG and iterating from
+  // a fixed epoch. No backend, no shared state, no trade impact — just a
+  // synchronized clockwork walk. Add entries to SWINGS to bake in events.
+  const EPOCH_MS = Date.UTC(2026, 6, 28, 0, 0, 0);   // fixed anchor in the past
+  const TICK_MS = 1000;                              // one tick per second
+  const PRNG_SEED = 0x1D05517E;                      // deterministic seed
+  const BASE_PRICE = 250.60;
   const OPEN = 238.20;
   const startMcap = 280_000_000;
+  const MAX_POINTS = 800;
+
+  // Scheduled events: { startSec, endSec, targetPrice }
+  // Each swing overrides the walk during its window, sliding linearly from
+  // whatever price it started at to targetPrice, with light noise for realism.
+  // Times are seconds since EPOCH_MS — same clock for every viewer.
+  const SWINGS = [
+    // Skyrocket to $900 — ~150s rip playing out live around deploy time.
+    { startSec: 175460, endSec: 175610, targetPrice: 900 },
+  ];
+
   let mcapMultiplier = 1;
 
-  const PAST_POINTS = 260;
-  const MAX_POINTS = 800;
-  const HISTORY_KEY = 'dogs_history_v1';
+  // Tiny seeded PRNG (Mulberry32).
+  function mulberry32(a) {
+    return function() {
+      let t = (a = (a + 0x6D2B79F5) | 0);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
-  // Try to restore chart history from localStorage so redeploys don't reset it.
-  let points = loadHistory();
-  let price = points.length ? points[points.length - 1].p : (250.60 + (Math.random() * 4 - 2));
+  // Iterate the global walk from tick 0 to `nowSec`, returning the last
+  // MAX_POINTS points and current price. Runtime is O(nowSec).
+  function computeGlobalWalk(nowSec) {
+    const rng = mulberry32(PRNG_SEED);
+    let p = BASE_PRICE;
+    let swingStartPrice = 0;
+    let activeSwing = null;
+    const points = [];
+    const keepFrom = Math.max(0, nowSec - MAX_POINTS + 1);
 
-  function loadHistory() {
-    try {
-      const raw = localStorage.getItem(HISTORY_KEY);
-      if (raw) {
-        const arr = JSON.parse(raw);
-        if (Array.isArray(arr) && arr.length) return arr;
+    for (let i = 0; i <= nowSec; i++) {
+      const swing = SWINGS.find(s => i >= s.startSec && i <= s.endSec);
+      if (swing && swing !== activeSwing) {
+        activeSwing = swing;
+        swingStartPrice = p;
+      } else if (!swing) {
+        activeSwing = null;
       }
-    } catch (_) {}
-    return [];
-  }
-  function saveHistory() {
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(points.slice(-MAX_POINTS))); } catch (_) {}
-  }
 
-  const TOTAL_MINUTES = 24 * 60; // 24H
-  // Seed history only if we didn't restore any from localStorage.
-  if (points.length === 0) {
-    (function seedHistory() {
-      let p = OPEN;
-      const drift = (price - OPEN) / PAST_POINTS;
-      for (let i = 0; i < PAST_POINTS; i++) {
-        const progress = i / PAST_POINTS;
-        const vol = 0.18 + progress * 1.4;
-        const noise = (Math.random() - 0.48) * vol;
-        p = p + drift + noise;
-        const t = (i / (MAX_POINTS - 1)) * TOTAL_MINUTES;
-        const v = 40_000 + Math.random() * 220_000 + progress * 180_000;
-        points.push({ p, v, t, live: false });
+      if (swing) {
+        const dur = Math.max(1, swing.endSec - swing.startSec);
+        const progress = (i - swing.startSec) / dur;
+        const target = swingStartPrice + (swing.targetPrice - swingStartPrice) * progress;
+        const jitter = (rng() - 0.5) * 1.5;
+        p = Math.max(0.01, target + jitter);
+      } else {
+        const bias = 0.02 * 0.05;
+        p = Math.max(0.01, p + (rng() - 0.5 + bias) * 1.2);
       }
-      points[points.length - 1].p = price;
-    })();
+
+      if (i >= keepFrom) points.push({ p, t: i, v: 40_000 + rng() * 260_000 });
+    }
+    return { price: p, points, rng };
   }
 
-  // Swing state — a queued price move that plays out over N ticks.
-  let swingRemaining = 0;        // ticks left in current swing
-  let swingPerTick = 0;          // absolute $ change to apply per tick during swing
-  function queueSwing(pct, overTicks) {
-    const over = Math.max(1, Math.floor(overTicks || 20));
-    const target = price * (1 + pct);
-    swingPerTick = (target - price) / over;
-    swingRemaining = over;
+  function currentTick() {
+    return Math.max(0, Math.floor((Date.now() - EPOCH_MS) / TICK_MS));
   }
-  function queueSwingTo(targetPrice, overTicks) {
-    const over = Math.max(1, Math.floor(overTicks || 20));
-    swingPerTick = (targetPrice - price) / over;
-    swingRemaining = over;
-  }
-  window.dogsSwing = queueSwing;
-  window.dogsSwingTo = queueSwingTo;
+
+  let lastTick = currentTick();
+  let walkState = computeGlobalWalk(lastTick);
+  let points = walkState.points;
+  let price = walkState.price;
+  let liveRng = walkState.rng; // continues the same stream
+
+  // All points come from the global walk. Tag them as non-live so the split
+  // rendering path draws them as one continuous line.
+  points.forEach(pt => { pt.live = false; });
 
   function fmtMoney(n) {
     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -610,34 +623,59 @@
     else $('pe').textContent = 'N/A 🦴';
   }
 
-  let saveTickCounter = 0;
+  // Track swing state across ticks so slides stay smooth.
+  let liveActiveSwing = null;
+  let liveSwingStartPrice = 0;
+
   function tick() {
-    let step;
-    let volMult = 1;
-    if (swingRemaining > 0) {
-      // Big-move mode: dominant swing + ambient noise so slow slides still look alive.
-      const bigJitter = (Math.random() - 0.5) * Math.abs(swingPerTick) * 0.35;
-      const ambient = (Math.random() - 0.5) * 0.8;
-      step = swingPerTick + bigJitter + ambient;
-      swingRemaining--;
-      volMult = 3.5;
-    } else {
-      const bias = 0.02;
-      step = (Math.random() - 0.5 + bias * 0.05) * 1.2;
+    // Catch up to the current global tick — usually just +1, but if the tab
+    // was backgrounded we may need to advance several to stay in sync.
+    const targetTick = currentTick();
+    while (lastTick < targetTick) {
+      lastTick++;
+      const swing = SWINGS.find(s => lastTick >= s.startSec && lastTick <= s.endSec);
+      if (swing && swing !== liveActiveSwing) {
+        liveActiveSwing = swing;
+        liveSwingStartPrice = price;
+      } else if (!swing) {
+        liveActiveSwing = null;
+      }
+
+      let next;
+      if (swing) {
+        const dur = Math.max(1, swing.endSec - swing.startSec);
+        const progress = (lastTick - swing.startSec) / dur;
+        const target = liveSwingStartPrice + (swing.targetPrice - liveSwingStartPrice) * progress;
+        const jitter = (liveRng() - 0.5) * 1.5;
+        next = Math.max(0.01, target + jitter);
+      } else {
+        const bias = 0.02 * 0.05;
+        next = Math.max(0.01, price + (liveRng() - 0.5 + bias) * 1.2);
+      }
+      price = next;
+      points.push({ p: price, v: 40_000 + liveRng() * 260_000, t: lastTick, live: true });
+      if (points.length > MAX_POINTS) points.shift();
     }
-    price = Math.max(0.01, price + step);
-    const lastT = points.length ? points[points.length - 1].t : 0;
-    const t = lastT + (TOTAL_MINUTES / (MAX_POINTS - 1));
-    const v = (40_000 + Math.random() * 260_000) * volMult;
-    points.push({ p: price, v, t, live: true });
-    if (points.length > MAX_POINTS) points.shift();
     updateHeader();
     render();
     renderPortfolio();
-    // Persist history periodically (every ~4.5s)
-    if (++saveTickCounter % 5 === 0) saveHistory();
   }
-  window.addEventListener('beforeunload', saveHistory);
+
+  // If the tab was hidden and the clock jumped forward a lot, recompute the
+  // walk from scratch instead of running thousands of catch-up iterations.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return;
+    if (currentTick() - lastTick > 60) {
+      const fresh = computeGlobalWalk(currentTick());
+      points = fresh.points;
+      points.forEach(pt => { pt.live = false; });
+      price = fresh.price;
+      liveRng = fresh.rng;
+      lastTick = currentTick();
+      updateHeader();
+      render();
+    }
+  });
 
   // Hover crosshair + tooltip
   const container = document.querySelector('.chart-container');
@@ -829,16 +867,7 @@
   render();
   renderPortfolio();
 
-  // Boot-swing: if this build was deployed with a queued swing, run it now.
-  if (BOOT_SWING) {
-    if (typeof BOOT_SWING.to === 'number') {
-      queueSwingTo(BOOT_SWING.to, BOOT_SWING.over || 20);
-    } else if (typeof BOOT_SWING.pct === 'number') {
-      queueSwing(BOOT_SWING.pct, BOOT_SWING.over || 20);
-    }
-  }
-
-  setInterval(tick, 900);
+  setInterval(tick, TICK_MS);
   setInterval(updateStats, 1500);
 })();
 </script>
