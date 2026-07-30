@@ -407,8 +407,10 @@
   // whatever price it started at to targetPrice, with light noise for realism.
   // Times are seconds since EPOCH_MS — same clock for every viewer.
   const SWINGS = [
-    // Skyrocket to $900 — ~150s rip playing out live around deploy time.
+    // Skyrocket to $900 — ~150s rip.
     { startSec: 175460, endSec: 175610, targetPrice: 900 },
+    // Crash to $150 — ~2min plunge playing out live around this deploy.
+    { startSec: 185874, endSec: 185994, targetPrice: 150 },
   ];
 
   let mcapMultiplier = 1;
